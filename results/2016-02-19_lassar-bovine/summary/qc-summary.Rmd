@@ -70,6 +70,8 @@ if (file.exists(tx2genes_file)) {
   txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
                         reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
   counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
+  write.table(counts, file="sailfish_counts.tsv", col.names=TRUE, row.names=TRUE,
+              quote=FALSE, sep="\t")
 } else {
   loginfo("Using gene counts calculated from featureCounts.")
   counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
@@ -594,7 +596,7 @@ library(dplyr)
 treatment_res = as.data.frame(all_results[[1]])
 treatment_res$id = rownames(treatment_res)
 treatment_res = treatment_res %>% left_join(conversions, by=c("id"="ensembl_gene_id"))
-write.table(treatment_res, file=paste(names(all_results)[i], ".tsv", sep=""),
+write.table(treatment_res, file=paste(names(all_results)[1], ".tsv", sep=""),
                         quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
 treatment_sig = subset(treatment_res, padj < 0.05)
 sanitize_datatable(treatment_sig)
@@ -605,7 +607,7 @@ treatments, using an adjusted p-value cutoff of 0.05. `r nrow(subset(treatment_s
 `r nrow(subset(treatment_sig, log2FoldChange < 0))` are more highly expressed in the
 untreated samples.
 
-I spit out a file called [deep vs superficial.tsv](deep vs superficial.tsv)
+I spit out a file called [treated vs untreated.tsv](treated vs untreated.tsv)
 which has this information in a table format.
 
 ### Wrap-up
@@ -619,3 +621,12 @@ the power to see them.
 Let me know if these results make any sense to you in a biological context.
 Do you see any hits that you were expecting to see? I don't know anything
 about the biology of your experiment so you'll have to make those judgements.
+
+#### Download zone results
+[deep vs superficial.tsv](deep vs superficial.tsv)
+
+#### Download zreatment results
+[treated vs untreated.tsv](treated vs untreated.tsv)
+
+#### Count matrix
+[sailfish counts](sailfish_counts.tsv)
