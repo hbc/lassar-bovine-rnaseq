@@ -46,9 +46,18 @@ check_install = function(packages) {
 
 ```{r load-libraries, echo=FALSE}
 packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap",
-              "DESeq2", "tximport", "logging", "DT")
+              "DESeq2", "tximport", "logging", "DT", "dplyr")
 check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
+```
+
+```{r conversions}
+library(biomaRt)
+bovine = useMart(biomart = "ENSEMBL_MART_ENSEMBL",
+                dataset="btaurus_gene_ensembl",
+                host = "jul2015.archive.ensembl.org")
+conversions = getBM(attributes=c("ensembl_gene_id", "hgnc_symbol", "gene_biotype",
+                                 "external_gene_name", "description"), mart=bovine)
 ```
 
 ```{r qc-setup}
@@ -70,8 +79,12 @@ if (file.exists(tx2genes_file)) {
   txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
                         reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
   counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
-  write.table(counts, file="sailfish_counts.tsv", col.names=TRUE, row.names=TRUE,
-              quote=FALSE, sep="\t")
+  counts_annotated = counts
+  counts_annotated$id = rownames(counts)
+  counts_annotated = counts_annotated %>%
+                       left_join(conversions, by=c("id"="ensembl_gene_id"))
+  write.table(counts_annotated, file="sailfish_counts.tsv", col.names=TRUE,
+              row.names=FALSE, quote=FALSE, sep="\t")
 } else {
   loginfo("Using gene counts calculated from featureCounts.")
   counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
@@ -104,14 +117,6 @@ sanitize_datatable = function(df, ...) {
 set.seed(1454944673)
 ```
 
-```{r conversions}
-library(biomaRt)
-bovine = useMart(biomart = "ENSEMBL_MART_ENSEMBL",
-                dataset="btaurus_gene_ensembl",
-                host = "jul2015.archive.ensembl.org")
-conversions = getBM(attributes=c("ensembl_gene_id", "hgnc_symbol", "gene_biotype",
-                                 "external_gene_name", "description"), mart=bovine)
-```
 
 ## Sample metadata
 This table contains a bunch of columns we estimate from the STAR alignments
@@ -414,6 +419,20 @@ handle_deseq2 = function(dds, summarydata, column) {
 }
 ```
 
+#### GO conversions
+This is set up to later on add GO terms for transcription and signalling to the
+results.
+
+```{r conversions-with-go}
+library(biomaRt)
+bovine = useMart(biomart = "ENSEMBL_MART_ENSEMBL",
+                dataset="btaurus_gene_ensembl",
+                host = "jul2015.archive.ensembl.org")
+go_conversions = getBM(attributes=c("ensembl_gene_id","name_1006"),
+                                 mart=bovine)
+trans_sig_ids = go_conversions[grep("signal|transcript", go_conversions$name_1006),]
+```
+
 ### Effect of zone
 Below we look at the effect of zone on the expression of genes in the
 cartilage. Positive fold changes are
@@ -505,6 +524,9 @@ zone_res = as.data.frame(all_results[[1]])
 zone_res$id = rownames(zone_res)
 zone_res = zone_res %>% left_join(conversions, by=c("id"="ensembl_gene_id"))
 write.table(zone_res, file=paste(names(all_results)[i], ".tsv", sep=""),
+                        quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
+zone_with_go = zone_res %>% inner_join(trans_sig_ids, by=c("id"="ensembl_gene_id"))
+write.table(zone_with_go, file=paste(names(all_results)[1], ".withgo.tsv", sep=""),
                         quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
 zone_sig = subset(zone_res, padj < 0.05)
 sanitize_datatable(zone_sig)
@@ -598,6 +620,9 @@ treatment_res$id = rownames(treatment_res)
 treatment_res = treatment_res %>% left_join(conversions, by=c("id"="ensembl_gene_id"))
 write.table(treatment_res, file=paste(names(all_results)[1], ".tsv", sep=""),
                         quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
+treatment_with_go = treatment_res %>% inner_join(trans_sig_ids, by=c("id"="ensembl_gene_id"))
+write.table(treatment_with_go, file=paste(names(all_results)[1], ".withgo.tsv", sep=""),
+                        quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
 treatment_sig = subset(treatment_res, padj < 0.05)
 sanitize_datatable(treatment_sig)
 ```
@@ -622,6 +647,7 @@ Let me know if these results make any sense to you in a biological context.
 Do you see any hits that you were expecting to see? I don't know anything
 about the biology of your experiment so you'll have to make those judgements.
 
+
 #### Download zone results
 [deep vs superficial.tsv](deep vs superficial.tsv)
 
@@ -630,3 +656,12 @@ about the biology of your experiment so you'll have to make those judgements.
 
 #### Count matrix
 [sailfish counts](sailfish_counts.tsv)
+
+#### GO conversions
+[GO conversions](go_conversions.tsv)
+
+#### Download zone results with signalling/transcription GO terms
+[deep vs superficial.withgo.tsv](deep vs superficial.withgo.tsv)
+
+#### Download zreatment results with signalling/transcription GO terms
+[treated vs untreated.withgo.tsv](treated vs untreated.withgo.tsv)
